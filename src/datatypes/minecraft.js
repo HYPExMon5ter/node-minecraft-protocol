@@ -251,10 +251,17 @@ function readTopBitSetTerminatedArray (buffer, offset, { type }) {
   const values = []
   let item
   while (true) {
-    if (offset + 1 > buffer.length) { throw new PartialReadError() }
+    if (cursor + 1 > buffer.length) { throw new PartialReadError() }
     item = buffer.readUInt8(cursor)
-    buffer[cursor] = buffer[cursor] & 127 // removes top bit
-    const results = this.read(buffer, cursor, type, {})
+    // The element is read with the continuation bit cleared. Restore it afterwards: the
+    // packet buffer is also emitted as `raw` and may be forwarded unchanged.
+    buffer[cursor] = item & 127
+    let results
+    try {
+      results = this.read(buffer, cursor, type, {})
+    } finally {
+      buffer[cursor] = item
+    }
     values.push(results.value)
     cursor += results.size
     if ((item & 128) === 0) { // check if top bit is set, if not last value

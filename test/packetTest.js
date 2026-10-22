@@ -207,6 +207,8 @@ const values = {
         ? (typeArgs[2].type[1].fields['minecraft:crafting_shapeless'] === undefined ? 'crafting_shapeless' : 'minecraft:crafting_shapeless')
         : getValue(typeArgs[index].type, results)
       if (typeArgs[index].anon) {
+        // An anonymous void branch contributes no fields
+        if (v === undefined) return
         Object.keys(v).forEach(key => {
           results[key] = v[key]
         })
@@ -243,13 +245,9 @@ const values = {
   Slot: slotValue,
   UntrustedSlot: slotValue,
   HashedSlot: slotValue,
-  SlotComponent: {
-    type: 'hide_tooltip'
-  },
   ChatTypes: {
     registryIndex: 1
   },
-  SlotComponentType: 0,
   nbt: nbtValue,
   optionalNbt: nbtValue,
   compressedNbt: nbtValue,
@@ -303,7 +301,8 @@ const values = {
     })
     return results
   },
-  mapper: '',
+  // A real name, so switches comparing against the mapped field take a real branch
+  mapper: (typeArgs) => Object.values(typeArgs.mappings)[0],
   tags: [{ tagName: 'hi', entries: [1, 2, 3, 4, 5] }],
   ingredient: [slotValue],
   particleData: null,
@@ -420,6 +419,7 @@ const values = {
     filtering: false
   },
   lpVec3: { x: 0, y: 0, z: 0 },
+  entityDelta: { onGround: true, steps: [{ dX: 1, dY: -2, dZ: 3, ticks: 0 }] },
   ExplosionParticleEntry: {
     data: { // ExplosionParticleInfo
       particle: {
@@ -430,13 +430,6 @@ const values = {
       scaling: 0
     },
     weight: 1
-  },
-  DebugSubscriptionDataType: 0,
-  DebugSubscriptionUpdate: {
-    type: 0
-  },
-  DebugSubscriptionEvent: {
-    type: 0
   },
   RespawnData: {
     globalPos: {
@@ -456,12 +449,20 @@ const values = {
   }
 }
 
+// Named types of the packet being generated (shared and state/direction types).
+// Types without an explicit entry in `values` are generated from their definition,
+// so new composite types need no hand-written value.
+let protocolTypes = {}
+
 function getValue (_type, packet) {
   const fieldInfo = getFieldInfo(_type)
+  const definition = protocolTypes[fieldInfo.type]
   if (typeof values[fieldInfo.type] === 'function') {
     return values[fieldInfo.type](fieldInfo.typeArgs, packet)
   } else if (values[fieldInfo.type] !== undefined) {
     return values[fieldInfo.type]
+  } else if (definition !== undefined && definition !== 'native' && fieldInfo.typeArgs === undefined) {
+    return getValue(definition, packet)
   } else if (fieldInfo.type !== 'void') {
     throw new Error('No value for type ' + fieldInfo.type)
   }
@@ -504,7 +505,6 @@ for (const supportedVersion of mc.supportedVersions) {
       })
       client.end()
     })
-    let packetInfo
     Object.keys(packets).filter(function (state) { return state !== 'types' })
       .forEach(function (state) {
         Object.keys(packets[state]).forEach(function (direction) {
@@ -513,10 +513,8 @@ for (const supportedVersion of mc.supportedVersions) {
               return packetName !== 'packet' && packetName.startsWith('packet_')
             })
             .forEach(function (packetName) {
-              packetInfo = packets[state][direction].types[packetName]
-              packetInfo = packetInfo || null
+              const packetInfo = packets[state][direction].types[packetName] || null
               if (packetName.includes('bundle_delimiter')) return // not a real packet
-              if (['packet_set_projectile_power', 'packet_debug_sample_subscription'].includes(packetName)) return
               it(state + ',' + (direction === 'toServer' ? 'Server' : 'Client') + 'Bound,' + packetName,
                 callTestPacket(mcData, packetName.substr(7), packetInfo, state, direction === 'toServer'))
             })
@@ -531,6 +529,7 @@ for (const supportedVersion of mc.supportedVersions) {
     }
 
     function testPacket (mcData, packetName, packetInfo, state, toServer, done) {
+      protocolTypes = { ...packets.types, ...packets[state][toServer ? 'toServer' : 'toClient'].types }
       // empty object uses default values
       const packet = getFixedPacketPayload(mcData.version, packetName) || getValue(packetInfo, {})
       if (toServer) {
@@ -538,7 +537,7 @@ for (const supportedVersion of mc.supportedVersions) {
         serverClient.once(packetName, function (receivedPacket) {
           console.log('Recv', packetName)
           try {
-            assertPacketsMatch(packet, receivedPacket)
+            assertPacketsMatch(packetName, packet, receivedPacket, state, toServer)
           } catch (e) {
             console.log(packet, receivedPacket)
             throw e
@@ -550,29 +549,21 @@ for (const supportedVersion of mc.supportedVersions) {
         console.log('Writing to client', packetName, JSON.stringify(packet))
         client.once(packetName, function (receivedPacket) {
           console.log('Recv', packetName)
-          assertPacketsMatch(packet, receivedPacket)
+          assertPacketsMatch(packetName, packet, receivedPacket, state, toServer)
           done()
         })
         serverClient.write(packetName, packet)
       }
     }
 
-    function assertPacketsMatch (p1, p2) {
-      packetInfo.forEach(function (field) {
-        assert.deepEqual(p1[field], p2[field])
-      })
-      Object.keys(p1).forEach(function (field) {
-        if (p1[field] !== undefined) {
-          assert.ok(field in p2, 'field ' + field +
-            ' missing in p2, in p1 it has value ' + JSON.stringify(p1[field]))
-        }
-      })
-      Object.keys(p2).forEach(function (field) {
-        if (p2[field] !== undefined) {
-          assert.ok(field in p1, 'field ' + field + ' missing in p1, in p2 it has value ' +
-            JSON.stringify(p2[field]))
-        }
-      })
+    // The parsed form differs from the generated one in representation (anonymous NBT names,
+    // computed bitflag values, fields of other versions), so compare encodings: the received
+    // packet must encode to exactly the bytes that were sent. This also catches fields the
+    // reader skipped or left unread.
+    function assertPacketsMatch (packetName, sent, received, state, toServer) {
+      const serializer = mc.createSerializer({ state, isServer: !toServer, version: version.minecraftVersion })
+      const encode = params => serializer.createPacketBuffer({ name: packetName, params })
+      assert.ok(encode(received).equals(encode(sent)), `${packetName} did not round-trip`)
     }
   })
 }

@@ -15,12 +15,14 @@ const MC_SERVER_PATH = path.join(__dirname, 'server')
 
 // Vanilla logs the "Done" line startServer waits on before it builds its status object,
 // and closes any status request that arrives in between without a reply (1.19.4+).
+// Closing with the request still unread can reach the client as a reset (seen on Windows).
 async function pingWhenReady (options, attempts = 20) {
   for (let attempt = 1; ; attempt++) {
     try {
       return await mc.ping(options)
     } catch (err) {
-      if (attempt === attempts || !/closed before the server sent a status response/.test(err.message)) throw err
+      const closedEarly = /closed before the server sent a status response/.test(err.message) || err.code === 'ECONNRESET'
+      if (attempt === attempts || !closedEarly) throw err
       await new Promise(resolve => setTimeout(resolve, 50))
     }
   }
