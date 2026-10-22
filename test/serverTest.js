@@ -165,7 +165,9 @@ for (const supportedVersion of mc.supportedVersions) {
     it('kicks clients that do not send keepalive packets', function (done) {
       const server = mc.createServer({
         'online-mode': false,
-        kickTimeout: 100,
+        // Also the deadline for login_start: keep it well above the time a client needs to
+        // connect and log in (including compiling its protocol) on a busy machine
+        kickTimeout: 1000,
         checkTimeoutInterval: 10,
         version: version.minecraftVersion,
         port: PORT
