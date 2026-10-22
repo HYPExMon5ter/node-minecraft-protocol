@@ -73,6 +73,7 @@ function readEntityDelta (buffer, offset) {
 
 function writeEntityDelta (value, buffer, offset) {
   const { onGround, steps } = value
+  if (steps.length === 0) throw new RangeError('entityDelta requires at least one step')
   const useLinear = steps.length === 1 && steps[0].ticks === 0
   const stepCount = useLinear ? 0 : steps.length
   const properties = (onGround ? 1 : 0) | (stepCount << 1)
@@ -97,6 +98,7 @@ function writeEntityDelta (value, buffer, offset) {
 
 function sizeOfEntityDelta (value) {
   const { onGround, steps } = value
+  if (steps.length === 0) throw new RangeError('entityDelta requires at least one step')
   const useLinear = steps.length === 1 && steps[0].ticks === 0
   const stepCount = useLinear ? 0 : steps.length
   const properties = (onGround ? 1 : 0) | (stepCount << 1)
