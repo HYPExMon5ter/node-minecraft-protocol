@@ -242,6 +242,8 @@ The latency of the client, in ms. Updated at each keep alive.
 
 An object index by version/state/direction/name, see client_custom_packet for an example
 
+The protocol compiled from a `customPackets` object is cached for that object and reused by every client, server and state change given the same object. Treat it as immutable after first use: pass a new object to change the schema. Different objects never share compiled protocols, and the shared minecraft-data schema is not modified.
+
 ### client.protocolVersion
 
 The client's protocol version

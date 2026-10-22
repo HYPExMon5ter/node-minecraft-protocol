@@ -10,10 +10,20 @@ const merge = require('lodash.merge')
 
 const minecraftData = require('minecraft-data')
 const protocols = {}
+// Protocols built with a customPackets object are cached per object identity, so every client
+// and state change sharing one object (e.g. all clients of a server) compiles it once, while
+// distinct objects never see each other's schemas. The object is read when first used:
+// later mutations require passing a new object.
+const customProtocols = new WeakMap()
 
 function createProtocol (state, direction, version, customPackets, compiled = true) {
   const key = `${state};${direction};${version}${compiled ? ';c' : ''}`
-  if (!customPackets && protocols[key]) { return protocols[key] }
+  let cache = protocols
+  if (customPackets) {
+    cache = customProtocols.get(customPackets)
+    if (!cache) customProtocols.set(customPackets, cache = {})
+  }
+  if (cache[key]) { return cache[key] }
 
   const mcData = minecraftData(version)
   const versionInfo = minecraftData.versionsByMinecraftVersion.pc[version]
@@ -24,8 +34,7 @@ function createProtocol (state, direction, version, customPackets, compiled = tr
     throw new Error(`Unsupported protocol version '${versionInfo.version}' (attempted to use '${mcData.version.version}' data); try updating your packages with 'npm update'`)
   }
 
-  // A per-client extension must neither mutate the shared minecraft-data
-  // registry nor reuse a compiler created for another client's extension.
+  // A custom extension must not mutate the shared minecraft-data registry.
   const mergedProtocol = customPackets
     ? merge({}, mcData.protocol, customPackets[mcData.version.majorVersion] ?? {})
     : mcData.protocol
@@ -36,7 +45,7 @@ function createProtocol (state, direction, version, customPackets, compiled = tr
     compiler.addProtocol(mergedProtocol, [state, direction])
     nbt.addTypesToCompiler('big', compiler)
     const proto = compiler.compileProtoDefSync()
-    if (!customPackets) protocols[key] = proto
+    cache[key] = proto
     return proto
   }
 
@@ -44,7 +53,7 @@ function createProtocol (state, direction, version, customPackets, compiled = tr
   proto.addTypes(minecraft)
   proto.addProtocol(mergedProtocol, [state, direction])
   nbt.addTypesToInterpreter('big', proto)
-  if (!customPackets) protocols[key] = proto
+  cache[key] = proto
   return proto
 }
 
