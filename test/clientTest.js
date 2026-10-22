@@ -9,6 +9,8 @@ const util = require('util')
 const applyClientHelpers = require('./common/clientHelpers')
 const download = util.promisify(require('minecraft-wrap').download)
 const { getPort } = require('./common/util')
+const { watchPacketErrors } = require('./common/packetErrors')
+const packetErrors = watchPacketErrors()
 
 const SURVIVE_TIME = 10000
 const MC_SERVER_PATH = path.join(__dirname, 'server')
@@ -47,6 +49,12 @@ for (const supportedVersion of mc.supportedVersions) {
 
   describe('client ' + supportedVersion + 'v', function () {
     this.timeout(10 * 60 * 1000)
+
+    // Packets the client could not decode are only logged and dropped; fail the version on them.
+    after(function () {
+      const reports = packetErrors.take()
+      assert.deepStrictEqual(reports, [], `${reports.length} packet(s) from the ${supportedVersion} server could not be decoded`)
+    })
 
     before(async function () {
       this.timeout(30 * 1000)
