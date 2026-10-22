@@ -1,7 +1,7 @@
 /* eslint-env mocha */
 
 const net = require('net')
-const assert = require('power-assert')
+const assert = require('assert')
 const mc = require('../')
 const { getPort } = require('./common/util')
 

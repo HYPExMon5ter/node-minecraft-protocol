@@ -4,7 +4,7 @@ const mc = require('../')
 const Client = mc.Client
 const Server = mc.Server
 const net = require('net')
-const assert = require('power-assert')
+const assert = require('assert')
 const getFieldInfo = require('protodef').utils.getFieldInfo
 const getField = require('protodef').utils.getField
 

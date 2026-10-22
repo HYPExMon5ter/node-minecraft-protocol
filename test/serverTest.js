@@ -2,7 +2,7 @@
 
 const net = require('net')
 const mc = require('../')
-const assert = require('power-assert')
+const assert = require('assert')
 const { once } = require('events')
 const nbt = require('prismarine-nbt')
 const applyClientHelpers = require('./common/clientHelpers')
