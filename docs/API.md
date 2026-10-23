@@ -330,6 +330,12 @@ Unregister a channel `name` and send the unregister packet if `custom` is true.
 ### client.chat(message)
 Send a chat message to the server, with signing on 1.19+.
 
+On 1.19.3+ with a chat session (signed in with Microsoft), chat written before the server has applied the session is held and sent, in order, once it has.
+
+### client.requestStatistics() : Promise<packet>
+
+Request the player's statistics and resolve with the `statistics` packet that answers the request. The server answers in the order it received the requests, after the game packets written before them, so the answer also means those packets have been processed.
+
 ### client.signMessage(message: string, timestamp: BigInt, salt?: number, preview?: string, acknowledgements?: Buffer[]) : Buffer
 
 (1.19) Generate a signature for a chat message to be sent to server

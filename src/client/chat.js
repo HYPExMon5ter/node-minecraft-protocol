@@ -408,7 +408,21 @@ module.exports = function (client, options) {
   // earlier timestamp than the one before, and Date.now() steps back when the system clock is
   // adjusted. So timestamps never decrease on a connection; one given by the caller is sent as is.
   let lastTimestamp = 0n
+  // Chat written while held is sent, in order, once the promise resolves
+  let heldChat = null
+  client._holdChatUntil = (promise) => {
+    heldChat = []
+    promise.then(() => {
+      const held = heldChat
+      heldChat = null
+      for (const [message, options] of held) client._signedChat(message, options)
+    })
+  }
   client._signedChat = (message, options = {}) => {
+    if (heldChat) {
+      heldChat.push([message, options])
+      return
+    }
     if (!options.timestamp) {
       const now = BigInt(Date.now())
       options.timestamp = now > lastTimestamp ? now : lastTimestamp

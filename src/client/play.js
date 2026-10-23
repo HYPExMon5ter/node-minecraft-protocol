@@ -11,6 +11,17 @@ module.exports = function (client, options) {
     }
   })
 
+  // The server answers statistics requests in the order it receives them, from the same queue it
+  // handles other game packets in, so an answer also means that everything written before the
+  // request has been processed. Answers are matched to requests in order.
+  const statisticsRequests = []
+  client.on('statistics', (packet) => statisticsRequests.shift()?.(packet))
+  client.requestStatistics = () => new Promise((resolve) => {
+    statisticsRequests.push(resolve)
+    const [field] = require('minecraft-data')(client.version).protocol.play.toServer.types.packet_client_command[1]
+    client.write('client_command', { [field.name]: Array.isArray(field.type) ? 'request_stats' : 1 })
+  })
+
   client.once('login', (packet) => {
     if (packet.enforcesSecureChat) client.serverFeatures.enforcesSecureChat = packet.enforcesSecureChat
     const mcData = require('minecraft-data')(client.version)
@@ -26,6 +37,12 @@ module.exports = function (client, options) {
         publicKey: client.profileKeys ? client.profileKeys.public.export({ type: 'spki', format: 'der' }) : undefined,
         signature: client.profileKeys ? client.profileKeys.signatureV2 : undefined
       })
+      // The server takes chat signed with this session as unsigned, which secure chat rejects
+      // ("missing profile public key"), if the chat arrives before it has applied the session.
+      // 26.1+ servers apply the session on their next tick but take chat as soon as it arrives,
+      // so chat sent right after joining loses that race. Hold chat until the server has
+      // answered a statistics request written after the session update.
+      client._holdChatUntil(client.requestStatistics())
     }
   })
 
