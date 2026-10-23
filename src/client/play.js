@@ -38,10 +38,11 @@ module.exports = function (client, options) {
         signature: client.profileKeys ? client.profileKeys.signatureV2 : undefined
       })
       // The server takes chat signed with this session as unsigned, which secure chat rejects
-      // ("missing profile public key"), if the chat arrives before it has applied the session.
-      // 26.1+ servers apply the session on their next tick but take chat as soon as it arrives,
-      // so chat sent right after joining loses that race. Hold chat until the server has
-      // answered a statistics request written after the session update.
+      // ("missing profile public key"), if it handles the chat before applying the session.
+      // From 1.21.9 the server applies the session on its next tick but can handle chat before
+      // that, so chat sent right after joining can lose the race (seen on 1.21.11 and 26.x).
+      // Hold chat until the server has answered a statistics request written after the session
+      // update.
       client._holdChatUntil(client.requestStatistics())
     }
   })
