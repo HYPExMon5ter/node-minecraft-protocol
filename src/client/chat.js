@@ -404,8 +404,16 @@ module.exports = function (client, options) {
     }
   }
 
+  // The server disconnects a client for out-of-order chat when a message or command carries an
+  // earlier timestamp than the one before, and Date.now() steps back when the system clock is
+  // adjusted. So timestamps never decrease on a connection; one given by the caller is sent as is.
+  let lastTimestamp = 0n
   client._signedChat = (message, options = {}) => {
-    options.timestamp = options.timestamp || BigInt(Date.now())
+    if (!options.timestamp) {
+      const now = BigInt(Date.now())
+      options.timestamp = now > lastTimestamp ? now : lastTimestamp
+    }
+    if (options.timestamp > lastTimestamp) lastTimestamp = options.timestamp
     options.salt = options.salt || 1n
 
     if (message.startsWith('/')) {
