@@ -554,13 +554,15 @@ for (const supportedVersion of mc.supportedVersions) {
           port: PORT
         })
         client.on('update_time', function () {
-          // Below handler synchronously defined should be guaranteed to be called after the above one
-          const d1 = Date.now()
+          // Below handler synchronously defined should be guaranteed to be called after the above one.
+          // A bundle's constituents are emitted in one synchronous run, before any queued tick: a
+          // wall-clock comparison failed whenever that run took over a millisecond.
+          let sameRun = true
+          process.nextTick(() => { sameRun = false })
           client.on('close_window', function () {
             server.close()
-            const d2 = Date.now()
-            if (mcData.supportFeature('hasBundlePacket') && (d2 - d1) > 1) {
-              throw new Error(`bundle packet constituents did not arrive at once : ${d1}, ${d2}`)
+            if (mcData.supportFeature('hasBundlePacket') && !sameRun) {
+              throw new Error('bundle packet constituents did not arrive at once')
             }
           })
         })
